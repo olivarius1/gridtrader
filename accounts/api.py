@@ -77,23 +77,23 @@ def register(request, data: schemas.UserRegisterSchema):
 def login_user(request, data: schemas.UserLoginSchema):
     """用户登录"""
     try:
-        success, message, user = UserAuthService.login_user(
+        result = UserAuthService.login_user(
             username=data.username,
             password=data.password
         )
         
-        if success:
-            login(request, user)
+        if result.success and result.data and result.data.user:
+            login(request, result.data.user)
             return schemas.AuthResponse(
                 success=True,
-                message=message,
-                user=schemas.UserProfileSchema.from_orm(user),
+                message=result.message,
+                user=schemas.UserProfileSchema.from_orm(result.data.user),
                 token=None
             )
         else:
             return schemas.AuthResponse(
                 success=False,
-                message=message,
+                message=result.message,
                 user=None,
                 token=None
             )
@@ -224,16 +224,16 @@ def get_user_balance(request):
 def update_user_balance(request, data: schemas.BalanceUpdateSchema):
     """更新用户资金"""
     try:
-        success, message = BalanceService.update_balance(
+        result = BalanceService.update_balance(
             user=request.user,
             amount=data.amount,
             transaction_type=data.transaction_type,
-            description=data.description or ""
+            description=data.description
         )
         
         return schemas.MessageResponse(
-            success=success,
-            message=message,
+            success=result.success,
+            message=result.message,
             data=None
         )
         

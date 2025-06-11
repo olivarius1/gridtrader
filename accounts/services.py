@@ -17,8 +17,9 @@ accounts.services
 import hashlib
 import secrets
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Generic, TypeVar, cast
 from datetime import datetime, timedelta
+from dataclasses import dataclass
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.hashers import make_password, check_password
@@ -30,6 +31,48 @@ from django.core.mail import send_mail
 from django.conf import settings
 
 from .models import User, CommissionPlan
+
+# 服务响应数据类型
+T = TypeVar('T')
+
+@dataclass
+class ServiceResponse(Generic[T]):
+    """统一的服务响应格式"""
+    success: bool
+    message: str
+    data: Optional[T] = None
+    error_code: Optional[str] = None
+
+@dataclass
+class AuthResult:
+    """认证结果数据"""
+    user: Optional[User] = None
+
+@dataclass
+class TokenResult:
+    """令牌结果数据"""
+    token: Optional[str] = None
+
+@dataclass
+class UserResult:
+    """用户操作结果数据"""
+    user: Optional[User] = None
+
+@dataclass
+class CommissionResult:
+    """佣金方案结果数据"""
+    plan: Optional[CommissionPlan] = None
+
+@dataclass
+class FeeCalculationResult:
+    """费用计算结果数据"""
+    amount: Decimal
+    commission: Decimal
+    transfer_fee: Decimal
+    stamp_tax: Decimal
+    total_fee: Decimal
+    net_amount: Decimal
+    plan_name: str
 
 
 class UserAuthService:
@@ -88,7 +131,7 @@ class UserAuthService:
             return False, f"注册失败: {str(e)}", None
     
     @staticmethod
-    def login_user(username: str, password: str) -> Tuple[bool, str, Optional[User]]:
+    def login_user(username: str, password: str) -> ServiceResponse[AuthResult]:
         """
         用户登录
         
@@ -97,7 +140,7 @@ class UserAuthService:
             password: 密码
             
         Returns:
-            Tuple[是否成功, 消息, 用户对象]
+            ServiceResponse[AuthResult]: 登录结果
         """
         try:
             # 支持用户名或邮箱登录
@@ -105,8 +148,8 @@ class UserAuthService:
             if '@' in username:
                 # 邮箱登录
                 try:
-                    user = User.objects.get(email=username)
-                    user = authenticate(username=user.username, password=password)
+                    email_user = User.objects.get(email=username)
+                    user = authenticate(username=email_user.username, password=password)
                 except User.DoesNotExist:
                     pass
             else:
@@ -114,12 +157,24 @@ class UserAuthService:
                 user = authenticate(username=username, password=password)
             
             if user and user.is_active:
-                return True, "登录成功", user
+                return ServiceResponse(
+                    success=True,
+                    message="登录成功",
+                    data=AuthResult(user=cast(User, user))
+                )
             else:
-                return False, "用户名或密码错误", None
+                return ServiceResponse(
+                    success=False,
+                    message="用户名或密码错误",
+                    data=AuthResult(user=None)
+                )
                 
         except Exception as e:
-            return False, f"登录失败: {str(e)}", None
+            return ServiceResponse(
+                success=False,
+                message=f"登录失败: {str(e)}",
+                data=AuthResult(user=None)
+            )
     
     @staticmethod
     def change_password(
@@ -195,7 +250,7 @@ class UserManagementService:
             用户信息字典
         """
         return {
-            'id': user.id,
+            'id': user.pk,
             'username': user.username,
             'email': user.email,
             'first_name': user.first_name,
@@ -235,14 +290,14 @@ class UserManagementService:
             
             # 检查邮箱是否被其他用户使用
             if email and email != user.email:
-                if User.objects.filter(email=email).exclude(id=user.id).exists():
+                if User.objects.filter(email=email).exclude(id=user.pk).exists():
                     return False, "邮箱已被其他用户使用", None
                 user.email = email
                 update_fields.append('email')
             
             # 检查手机号是否被其他用户使用
             if phone and phone != user.phone:
-                if User.objects.filter(phone=phone).exclude(id=user.id).exists():
+                if User.objects.filter(phone=phone).exclude(id=user.pk).exists():
                     return False, "手机号已被其他用户使用", None
                 user.phone = phone
                 update_fields.append('phone')
@@ -335,8 +390,8 @@ class BalanceService:
         user: User,
         amount: Decimal,
         transaction_type: str,
-        description: str = None
-    ) -> Tuple[bool, str]:
+        description: str = ""
+    ) -> ServiceResponse[None]:
         """
         更新用户资金
         
@@ -362,33 +417,33 @@ class BalanceService:
                 elif transaction_type == 'withdraw':
                     # 取款
                     if user.available_balance < amount:
-                        return False, "可用资金不足"
+                        return ServiceResponse(success=False, message="可用资金不足")
                     user.available_balance -= amount
                     user.total_balance -= amount
                     
                 elif transaction_type == 'freeze':
                     # 冻结资金
                     if user.available_balance < amount:
-                        return False, "可用资金不足"
+                        return ServiceResponse(success=False, message="可用资金不足")
                     user.available_balance -= amount
                     user.frozen_balance += amount
                     
                 elif transaction_type == 'unfreeze':
                     # 解冻资金
                     if user.frozen_balance < amount:
-                        return False, "冻结资金不足"
+                        return ServiceResponse(success=False, message="冻结资金不足")
                     user.frozen_balance -= amount
                     user.available_balance += amount
                     
                 elif transaction_type == 'trade':
                     # 交易相关资金变动
                     if amount < 0 and user.available_balance < abs(amount):
-                        return False, "可用资金不足"
+                        return ServiceResponse(success=False, message="可用资金不足")
                     user.available_balance += amount
                     user.total_balance += amount
                 
                 else:
-                    return False, f"不支持的交易类型: {transaction_type}"
+                    return ServiceResponse(success=False, message=f"不支持的交易类型: {transaction_type}")
                 
                 user.save(update_fields=[
                     'total_balance', 'available_balance', 'frozen_balance', 'updated_at'
@@ -396,18 +451,18 @@ class BalanceService:
                 
                 # 这里可以记录资金变动历史（需要额外的模型）
                 
-                return True, "资金更新成功"
+                return ServiceResponse(success=True, message="资金更新成功")
                 
         except Exception as e:
-            return False, f"资金更新失败: {str(e)}"
+            return ServiceResponse(success=False, message=f"资金更新失败: {str(e)}")
     
     @staticmethod
     def transfer_funds(
         from_user: User,
         to_user: User,
         amount: Decimal,
-        description: str = None
-    ) -> Tuple[bool, str]:
+        description: str = ""
+    ) -> ServiceResponse[None]:
         """
         用户间转账
         
@@ -422,7 +477,7 @@ class BalanceService:
         """
         try:
             if amount <= 0:
-                return False, "转账金额必须大于0"
+                return ServiceResponse(success=False, message="转账金额必须大于0")
             
             with transaction.atomic():
                 # 刷新用户数据
@@ -431,7 +486,7 @@ class BalanceService:
                 
                 # 检查转出用户资金
                 if from_user.available_balance < amount:
-                    return False, "转出用户可用资金不足"
+                    return ServiceResponse(success=False, message="转出用户可用资金不足")
                 
                 # 执行转账
                 from_user.available_balance -= amount
@@ -448,10 +503,10 @@ class BalanceService:
                     'total_balance', 'available_balance', 'updated_at'
                 ])
                 
-                return True, "转账成功"
+                return ServiceResponse(success=True, message="转账成功")
                 
         except Exception as e:
-            return False, f"转账失败: {str(e)}"
+            return ServiceResponse(success=False, message=f"转账失败: {str(e)}")
 
 
 class CommissionService:
