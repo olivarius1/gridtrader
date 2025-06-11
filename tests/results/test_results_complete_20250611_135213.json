@@ -1,0 +1,48 @@
+[
+  {
+    "test_name": "Django认证登录",
+    "success": false,
+    "message": "登录失败，状态码: 200",
+    "timestamp": "2025-06-11T13:52:07.113020",
+    "data": null
+  },
+  {
+    "test_name": "获取策略列表",
+    "success": false,
+    "message": "状态码: 401",
+    "timestamp": "2025-06-11T13:52:08.115534",
+    "data": {
+      "detail": "Unauthorized"
+    }
+  },
+  {
+    "test_name": "获取策略用于计划测试",
+    "success": false,
+    "message": "无法获取策略列表: 401",
+    "timestamp": "2025-06-11T13:52:09.119133",
+    "data": null
+  },
+  {
+    "test_name": "网格配置预览",
+    "success": false,
+    "message": "状态码: 401",
+    "timestamp": "2025-06-11T13:52:10.122413",
+    "data": {
+      "detail": "Unauthorized"
+    }
+  },
+  {
+    "test_name": "基础仪表板",
+    "success": false,
+    "message": "状态码: 401",
+    "timestamp": "2025-06-11T13:52:11.125579",
+    "data": null
+  },
+  {
+    "test_name": "获取模板列表",
+    "success": false,
+    "message": "状态码: 401",
+    "timestamp": "2025-06-11T13:52:12.128707",
+    "data": null
+  }
+]

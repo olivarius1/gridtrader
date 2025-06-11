@@ -1,0 +1,58 @@
+[
+  {
+    "test_name": "服务器连通性",
+    "success": true,
+    "message": "服务器响应状态码: 404",
+    "timestamp": "2025-06-11T13:40:28.109237",
+    "data": null
+  },
+  {
+    "test_name": "API文档访问",
+    "success": true,
+    "message": "状态码: 200",
+    "timestamp": "2025-06-11T13:40:28.611776",
+    "data": null
+  },
+  {
+    "test_name": "API Schema访问",
+    "success": true,
+    "message": "Schema版本: 3.1.0, 标题: 网格交易系统 API",
+    "timestamp": "2025-06-11T13:40:29.216318",
+    "data": null
+  },
+  {
+    "test_name": "数据库连通性",
+    "success": true,
+    "message": "API响应正常 (状态码: 401)",
+    "timestamp": "2025-06-11T13:40:29.718700",
+    "data": null
+  },
+  {
+    "test_name": "端点测试: 获取策略列表",
+    "success": true,
+    "message": "状态码: 401 (端点存在)",
+    "timestamp": "2025-06-11T13:40:30.223097",
+    "data": null
+  },
+  {
+    "test_name": "端点测试: 获取计划列表",
+    "success": true,
+    "message": "状态码: 401 (端点存在)",
+    "timestamp": "2025-06-11T13:40:30.273245",
+    "data": null
+  },
+  {
+    "test_name": "端点测试: 获取仪表板",
+    "success": true,
+    "message": "状态码: 401 (端点存在)",
+    "timestamp": "2025-06-11T13:40:30.323388",
+    "data": null
+  },
+  {
+    "test_name": "端点测试: 获取模板列表",
+    "success": true,
+    "message": "状态码: 401 (端点存在)",
+    "timestamp": "2025-06-11T13:40:30.373227",
+    "data": null
+  }
+]

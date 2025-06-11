@@ -1,3 +1,30 @@
+"""
+stocks.models
+~~~~~~~~~~~
+
+股票标的管理模块
+
+该模块包含以下主要模型：
+- Stock: 股票/标的基本信息（股票、ETF、基金、债券）
+- StockPrice: 历史价格数据存储
+- WatchList: 用户自选股管理
+
+主要功能：
+1. 股票基本信息管理
+2. 历史价格数据存储与查询
+3. 用户自选股管理
+4. 价格监控和提醒设置
+
+支持的标的类型：
+- 股票 (stock)
+- ETF基金 (etf)  
+- 基金 (fund)
+- 债券 (bond)
+
+作者: Grid Trading System
+创建时间: 2024
+"""
+
 from decimal import Decimal
 
 from django.db import models

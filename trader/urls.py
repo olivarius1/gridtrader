@@ -16,7 +16,23 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from ninja import NinjaAPI
+
+from grid.api import grid_router
+from accounts.api import accounts_router
+
+# 创建API实例
+api = NinjaAPI(
+    title="网格交易系统 API",
+    description="基于Django Ninja的网格交易策略API系统",
+    version="1.0.0"
+)
+
+# 注册路由器
+api.add_router("/grid", grid_router)
+api.add_router("/accounts", accounts_router)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/", api.urls),
 ]

@@ -1,3 +1,23 @@
+"""
+accounts.models
+~~~~~~~~~~~~~
+
+用户账户管理模块
+
+该模块包含以下主要模型：
+- User: 扩展的用户模型，包含资金管理功能
+- CommissionPlan: 佣金费率方案，支持个性化佣金设置
+
+主要功能：
+1. 用户基本信息管理
+2. 用户资金账户管理
+3. 个性化佣金费率设置
+4. 费用计算（佣金、过户费、印花税）
+
+作者: Grid Trading System
+创建时间: 2024
+"""
+
 from decimal import Decimal
 
 from django.contrib.auth.models import AbstractUser
@@ -47,14 +67,14 @@ class User(AbstractUser):
         return f"User({self.username})"
 
 
-class CommissionScheme(models.Model):
+class CommissionPlan(models.Model):
     """佣金方案模型"""
 
-    scheme_name = models.CharField(max_length=100, verbose_name="方案名称")
+    plan_name = models.CharField(max_length=100, verbose_name="方案名称")
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="用户")
 
     # 佣金费率设置
-    commission_rate = models.DecimalField(
+    rate = models.DecimalField(
         max_digits=8,
         decimal_places=6,
         default=Decimal("0.0003"),
@@ -90,19 +110,19 @@ class CommissionScheme(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
-        db_table = "commission_schemes"
+        db_table = "commission_plans"
         verbose_name = "佣金方案"
         verbose_name_plural = "佣金方案"
         indexes = [
-            models.Index(fields=["user", "scheme_name"]),
+            models.Index(fields=["user", "plan_name"]),
         ]
 
     def __str__(self):
-        return f"CommissionScheme({self.scheme_name})"
+        return f"CommissionPlan({self.plan_name})"
 
     def calculate_commission(self, amount):
         """计算佣金"""
-        commission = amount * self.commission_rate
+        commission = amount * self.rate
         return max(commission, self.min_commission)
 
     def calculate_transfer_fee(self, amount):

@@ -1,3 +1,39 @@
+"""
+analytics.models
+~~~~~~~~~~~~~~
+
+交易分析和统计模块
+
+该模块包含以下主要模型：
+- ProfitLossRecord: 盈亏记录，按周期统计收益情况
+- TradingPerformance: 交易表现分析，提供详细的绩效指标
+- DailyBalance: 每日资产余额，用于绘制收益曲线
+
+主要功能：
+1. 多周期盈亏统计（日/周/月/季/年）
+2. 交易绩效分析（胜率、夏普比率、最大回撤等）
+3. 每日资产变化跟踪
+4. 收益曲线数据支持
+5. 风险指标计算
+
+统计周期支持：
+- daily: 日度统计
+- weekly: 周度统计  
+- monthly: 月度统计
+- quarterly: 季度统计
+- yearly: 年度统计
+
+关键绩效指标：
+- 胜率 (win_rate)
+- 盈亏比 (profit_loss_ratio)
+- 夏普比率 (sharpe_ratio)
+- 最大回撤 (max_drawdown)
+- 波动率 (volatility)
+
+作者: Grid Trading System
+创建时间: 2024
+"""
+
 from decimal import Decimal
 
 from django.db import models

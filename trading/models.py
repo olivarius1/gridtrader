@@ -1,15 +1,37 @@
+"""
+trading.models
+~~~~~~~~~~~~
+
+交易记录和持仓管理模块
+
+该模块包含以下主要模型：
+- TradingRecord: 交易记录，记录所有买卖交易详情
+- Position: 持仓信息，实时跟踪用户持仓状态
+
+主要功能：
+1. 交易记录管理（买入/卖出）
+2. 交易费用计算（佣金、过户费、印花税）
+3. 持仓信息维护
+4. 盈亏计算（已实现/未实现）
+5. 成本价和市值计算
+
+支持的交易类型：
+- 买入 (b)
+- 卖出 (s)
+
+交易状态：
+- 已完成 (completed)
+- 已取消 (cancelled)
+- 待成交 (pending)
+
+作者: Grid Trading System
+创建时间: 2024
+"""
+
 from datetime import datetime
 from decimal import Decimal
 
 from django.db import models
-from mongoengine import (
-    BooleanField,
-    DateTimeField,
-    DecimalField,
-    Document,
-    IntField,
-    StringField,
-)
 
 # Create your models here.
 
@@ -94,7 +116,7 @@ class TradingRecord(models.Model):
 
     # 关联信息
     commission_scheme = models.ForeignKey(
-        "accounts.CommissionScheme",
+        "accounts.CommissionPlan",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
