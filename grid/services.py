@@ -762,7 +762,7 @@ class GridConfigService:
     
     @staticmethod
     def validate_grid_configuration(config_data: Dict) -> Dict:
-        """验证网格配置合理性"""
+        """验证网格配置合理性 """
         errors = []
         warnings = []
         suggestions = []
@@ -828,7 +828,7 @@ class GridConfigService:
     
     @staticmethod
     def _generate_optimization_suggestions(config_data: Dict, preview: Dict) -> List[str]:
-        """生成优化建议"""
+        """生成优化建议 暂时不做"""
         suggestions = []
         
         # 基于投资分配的建议
@@ -845,7 +845,7 @@ class GridConfigService:
     
     @staticmethod
     def _calculate_config_score(config_data: Dict, errors: Optional[List] = None, warnings: Optional[List] = None) -> float:
-        """计算配置评分 (0-100)"""
+        """计算配置评分 (0-100) 暂时不做 """
         base_score = 100.0
         
         # 错误扣分

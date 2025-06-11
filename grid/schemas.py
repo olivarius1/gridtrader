@@ -166,7 +166,7 @@ class GridPlanCreateSchema(Schema):
 
 
 class GridPerformanceSnapshotSchema(ModelSchema):
-    """网格性能快照Schema"""
+    """网格性能快照Schema 暂时不做"""
     grid_plan_info: Optional[Dict[str, Any]] = None
     
     class Config:
