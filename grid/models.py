@@ -753,7 +753,7 @@ class GridTemplate(models.Model):
         ]
     
     def __str__(self):
-        return f"{self.name} ({self.get_category_display()})"
+        return f"{self.name} ({self.category})"
 
 
 class GridSimulation(models.Model):
@@ -801,4 +801,4 @@ class GridSimulation(models.Model):
         ]
     
     def __str__(self):
-        return f"模拟-{self.simulation_id[:8]} ({self.get_status_display()})"
+        return f"模拟-{self.simulation_id[:8]} ({self.status})"

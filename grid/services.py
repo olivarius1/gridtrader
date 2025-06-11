@@ -1,6 +1,6 @@
 from decimal import Decimal
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime, date
+from typing import List, Dict, Optional, Tuple, Any
+from datetime import datetime, date, timedelta
 from django.db import transaction
 from django.utils import timezone
 from django.db.models import Sum, Q
@@ -162,7 +162,7 @@ class GridStrategyService:
             
             grid_plan.save()
             
-            result = {'order': order}
+            result: Dict[str, Any] = {'order': order}
             
             # 如果是买入订单成交，创建对应的卖出订单
             if order.order_type == 'buy':
@@ -343,7 +343,7 @@ class GridStrategyService:
         }
     
     @staticmethod
-    def create_performance_snapshot(grid_plan: GridPlan, current_price: Decimal, snapshot_date: date = None) -> GridPerformanceSnapshot:
+    def create_performance_snapshot(grid_plan: GridPlan, current_price: Decimal, snapshot_date: date | None = None) -> GridPerformanceSnapshot:
         """创建性能快照"""
         if snapshot_date is None:
             snapshot_date = timezone.now().date()
@@ -432,7 +432,7 @@ class GridAnalyticsService:
     def analyze_strategy_performance(strategy: GridStrategy, days: int = 30) -> Dict:
         """分析策略表现"""
         end_date = timezone.now().date()
-        start_date = end_date - timezone.timedelta(days=days)
+        start_date = end_date - timedelta(days=days)
         
         plans = GridPlan.objects.filter(strategy=strategy)
         
@@ -446,9 +446,8 @@ class GridAnalyticsService:
                 snapshot_date__gte=start_date,
                 snapshot_date__lte=end_date
             ).order_by('-snapshot_date')
-            
-            if snapshots.exists():
-                latest = snapshots.first()
+            latest = snapshots.first()
+            if latest:
                 total_profit += latest.total_profit
                 total_trades += latest.total_trades
                 if latest.total_profit > 0:
@@ -845,7 +844,7 @@ class GridConfigService:
         return suggestions
     
     @staticmethod
-    def _calculate_config_score(config_data: Dict, errors: List = None, warnings: List = None) -> float:
+    def _calculate_config_score(config_data: Dict, errors: Optional[List] = None, warnings: Optional[List] = None) -> float:
         """计算配置评分 (0-100)"""
         base_score = 100.0
         

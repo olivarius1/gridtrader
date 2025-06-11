@@ -2,7 +2,7 @@ from decimal import Decimal
 from datetime import date, datetime
 from typing import List, Optional, Dict, Any
 from ninja import Schema, ModelSchema
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 
 from .models import (
     GridStrategy, GridPlan, GridLevel, GridOrder, 
@@ -28,33 +28,34 @@ class GridStrategyCreateSchema(Schema):
     
     # 留利润策略参数 (2.1)
     keep_profit: bool = Field(default=False, description="启用留利润策略")
-    profit_keep_ratio: Decimal = Field(default=100.00, description="利润保留比例")
+    profit_keep_ratio: Decimal = Field(default=Decimal("100.00"), description="利润保留比例")
     
     # 逐格加码策略参数 (2.2)
     progressive_investment: bool = Field(default=False, description="启用逐格加码")
-    investment_increase_percent: Decimal = Field(default=5.00, description="加码百分比")
+    investment_increase_percent: Decimal = Field(default=Decimal("5.00"), description="加码百分比")
     start_increase_from_grid: int = Field(default=2, description="从第几格开始加码", ge=1)
     
     # 一网打尽策略参数 (2.3)
     multi_grid: bool = Field(default=False, description="启用多重网格")
-    small_grid_percent: Decimal = Field(default=5.00, description="小网格间距")
-    medium_grid_percent: Decimal = Field(default=15.00, description="中网格间距")
-    large_grid_percent: Decimal = Field(default=30.00, description="大网格间距")
+    small_grid_percent: Decimal = Field(default=Decimal("5.00"), description="小网格间距")
+    medium_grid_percent: Decimal = Field(default=Decimal("15.00"), description="中网格间距")
+    large_grid_percent: Decimal = Field(default=Decimal("30.00"), description="大网格间距")
     
     # 资金分配比例
-    small_grid_ratio: Decimal = Field(default=50.00, description="小网格资金比例")
-    medium_grid_ratio: Decimal = Field(default=30.00, description="中网格资金比例")
-    large_grid_ratio: Decimal = Field(default=20.00, description="大网格资金比例")
+    small_grid_ratio: Decimal = Field(default=Decimal("50.00"), description="小网格资金比例")
+    medium_grid_ratio: Decimal = Field(default=Decimal("30.00"), description="中网格资金比例")
+    large_grid_ratio: Decimal = Field(default=Decimal("20.00"), description="大网格资金比例")
 
-    @validator('*')
-    def validate_strategy(cls, v, values):
+    @field_validator('small_grid_ratio', 'medium_grid_ratio', 'large_grid_ratio')
+    @classmethod
+    def validate_strategy(cls, v, info):
         """验证策略参数"""
         # 验证多重网格资金分配比例
-        if values.get('multi_grid', False):
+        if hasattr(info, 'data') and info.data.get('multi_grid', False):
             total_ratio = (
-                values.get('small_grid_ratio', 0) + 
-                values.get('medium_grid_ratio', 0) + 
-                values.get('large_grid_ratio', 0)
+                info.data.get('small_grid_ratio', 0) + 
+                info.data.get('medium_grid_ratio', 0) + 
+                info.data.get('large_grid_ratio', 0)
             )
             if abs(total_ratio - 100) > 0.01:
                 raise ValueError("多重网格资金分配比例总和必须为100%")
@@ -121,7 +122,7 @@ class GridPlanCreateSchema(Schema):
     base_price: Decimal = Field(..., description="基准价格", gt=0)
     min_price: Decimal = Field(..., description="最低价格", gt=0)
     max_price: Decimal = Field(..., description="最高价格", gt=0)
-    max_drawdown_percent: Decimal = Field(default=50.00, description="最大下跌比例")
+    max_drawdown_percent: Decimal = Field(default=Decimal("50.00"), description="最大下跌比例")
     
     # 资金参数
     base_investment: Decimal = Field(..., description="基础投资金额", gt=0)
@@ -130,25 +131,29 @@ class GridPlanCreateSchema(Schema):
     # 策略数据
     strategy_data: Dict[str, Any] = Field(..., description="策略配置数据")
 
-    @validator('min_price')
-    def validate_min_price(cls, v, values):
-        if 'base_price' in values and v >= values['base_price']:
+    @field_validator('min_price')
+    @classmethod
+    def validate_min_price(cls, v, info):
+        if hasattr(info, 'data') and 'base_price' in info.data and v >= info.data['base_price']:
             raise ValueError("最低价格必须小于基准价格")
         return v
 
-    @validator('max_price')
-    def validate_max_price(cls, v, values):
-        if 'base_price' in values and v <= values['base_price']:
+    @field_validator('max_price')
+    @classmethod
+    def validate_max_price(cls, v, info):
+        if hasattr(info, 'data') and 'base_price' in info.data and v <= info.data['base_price']:
             raise ValueError("最高价格必须大于基准价格")
         return v
 
-    @validator('max_investment')
-    def validate_max_investment(cls, v, values):
-        if 'base_investment' in values and v < values['base_investment']:
+    @field_validator('max_investment')
+    @classmethod
+    def validate_max_investment(cls, v, info):
+        if hasattr(info, 'data') and 'base_investment' in info.data and v < info.data['base_investment']:
             raise ValueError("最大投资金额不能小于基础投资金额")
         return v
 
-    @validator('strategy_data')
+    @field_validator('strategy_data')
+    @classmethod
     def validate_strategy_data(cls, v):
         if not v:
             raise ValueError("必须提供策略配置数据")
@@ -250,9 +255,10 @@ class BacktestRequest(Schema):
     """回测请求"""
     strategy: Dict[str, Any] = Field(..., description="策略参数")
     price_data: List[Dict[str, Any]] = Field(..., description="历史价格数据")
-    initial_capital: Decimal = Field(default=10000.00, description="初始资金")
+    initial_capital: Decimal = Field(default=Decimal("10000.00"), description="初始资金")
 
-    @validator('price_data')
+    @field_validator('price_data')
+    @classmethod
     def validate_price_data(cls, v):
         if not v:
             raise ValueError("价格数据不能为空")
@@ -268,7 +274,8 @@ class BacktestRequest(Schema):
         
         return v
 
-    @validator('strategy')
+    @field_validator('strategy')
+    @classmethod
     def validate_strategy(cls, v):
         required_fields = ['grid_interval_percent', 'base_investment']
         
@@ -372,15 +379,17 @@ class GridConfigPreviewRequest(Schema):
     max_investment: Decimal = Field(..., description="最大投资金额", gt=0)
     strategy_config: Dict[str, Any] = Field(default_factory=dict, description="策略配置")
 
-    @validator('min_price')
-    def validate_min_price(cls, v, values):
-        if 'base_price' in values and v >= values['base_price']:
+    @field_validator('min_price')
+    @classmethod
+    def validate_min_price(cls, v, info):
+        if hasattr(info, 'data') and 'base_price' in info.data and v >= info.data['base_price']:
             raise ValueError("最低价格必须小于基准价格")
         return v
 
-    @validator('max_price')
-    def validate_max_price(cls, v, values):
-        if 'base_price' in values and v <= values['base_price']:
+    @field_validator('max_price')
+    @classmethod
+    def validate_max_price(cls, v, info):
+        if hasattr(info, 'data') and 'base_price' in info.data and v <= info.data['base_price']:
             raise ValueError("最高价格必须大于基准价格")
         return v
 
@@ -425,7 +434,8 @@ class GridSimulationRequest(Schema):
     trend_direction: str = Field(default="neutral", description="趋势方向: up/down/neutral")
     trend_strength: Decimal = Field(default=Decimal("0.0"), description="趋势强度(%)", ge=-50, le=50)
 
-    @validator('trend_direction')
+    @field_validator('trend_direction')
+    @classmethod
     def validate_trend_direction(cls, v):
         if v not in ['up', 'down', 'neutral']:
             raise ValueError("趋势方向必须是: up/down/neutral")

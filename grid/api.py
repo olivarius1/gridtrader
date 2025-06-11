@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 from django.contrib.auth.models import AnonymousUser
-from ninja import Router, Query
+from ninja import Router
 from ninja.security import django_auth
 
 from .models import (
@@ -80,7 +80,7 @@ def delete_strategy(request, strategy_id: int):
 
 
 @grid_router.get("/strategies/{strategy_id}/performance", response=StrategyPerformanceResponse)
-def get_strategy_performance(request, strategy_id: int, days: int = Query(30)):
+def get_strategy_performance(request, strategy_id: int, days: int = 30):
     """获取策略性能分析"""
     strategy = get_object_or_404(GridStrategy, id=strategy_id)
     performance = GridAnalyticsService.analyze_strategy_performance(strategy, days)
@@ -99,18 +99,28 @@ def compare_strategies(request, payload: CompareStrategiesRequest):
 
 # ==================== 网格计划相关API ====================
 
-@grid_router.get("/plans", response=List[GridPlanSchema])
+@grid_router.get("/plans", response=List[Dict[str, Any]])
 def list_plans(request):
     """获取当前用户的网格计划列表"""
     plans = GridPlan.objects.filter(user=request.user).select_related('strategy', 'stock')
     
-    # 添加统计信息
+    result = []
     for plan in plans:
-        plan.active_orders_count = plan.orders.filter(status='pending').count()
-        plan.completed_trades_count = plan.trade_pairs.filter(is_completed=True).count()
-        plan.current_roi = float(plan.total_profit / plan.total_invested * 100) if plan.total_invested > 0 else 0.0
+        # 计算统计信息
+        active_orders_count = GridOrder.objects.filter(grid_plan=plan, status='pending').count()
+        completed_trades_count = GridTradePair.objects.filter(grid_plan=plan, is_completed=True).count()
+        current_roi = float(plan.total_profit / plan.total_invested * 100) if plan.total_invested > 0 else 0.0
+        
+        # 构造响应数据
+        plan_data = GridPlanSchema.from_orm(plan).dict()
+        plan_data.update({
+            'active_orders_count': active_orders_count,
+            'completed_trades_count': completed_trades_count,
+            'current_roi': current_roi
+        })
+        result.append(plan_data)
     
-    return plans
+    return result
 
 
 @grid_router.post("/plans", response=GridPlanSchema)
@@ -121,7 +131,7 @@ def create_plan(request, payload: GridPlanCreateSchema):
     
     # 获取股票对象
     from stocks.models import Stock
-    stock = get_object_or_404(Stock, id=validated_data.pop('stock'))
+    stock = get_object_or_404(Stock, pk=validated_data.pop('stock'))
     
     # 创建网格计划
     grid_plan = GridStrategyService.create_grid_plan(
@@ -133,23 +143,31 @@ def create_plan(request, payload: GridPlanCreateSchema):
     return grid_plan
 
 
-@grid_router.get("/plans/{plan_id}", response=GridPlanSchema)
+@grid_router.get("/plans/{plan_id}", response=Dict[str, Any])
 def get_plan(request, plan_id: int):
     """获取网格计划详情"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     
-    # 添加统计信息
-    plan.active_orders_count = plan.orders.filter(status='pending').count()
-    plan.completed_trades_count = plan.trade_pairs.filter(is_completed=True).count()
-    plan.current_roi = float(plan.total_profit / plan.total_invested * 100) if plan.total_invested > 0 else 0.0
+    # 计算统计信息
+    active_orders_count = GridOrder.objects.filter(grid_plan=plan, status='pending').count()
+    completed_trades_count = GridTradePair.objects.filter(grid_plan=plan, is_completed=True).count()
+    current_roi = float(plan.total_profit / plan.total_invested * 100) if plan.total_invested > 0 else 0.0
     
-    return plan
+    # 构造响应数据
+    plan_data = GridPlanSchema.from_orm(plan).dict()
+    plan_data.update({
+        'active_orders_count': active_orders_count,
+        'completed_trades_count': completed_trades_count,
+        'current_roi': current_roi
+    })
+    
+    return plan_data
 
 
 @grid_router.put("/plans/{plan_id}", response=GridPlanSchema)
 def update_plan(request, plan_id: int, payload: GridPlanCreateSchema):
     """更新网格计划"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     
     validated_data = payload.dict()
     strategy_data = validated_data.pop('strategy_data', {})
@@ -160,12 +178,13 @@ def update_plan(request, plan_id: int, payload: GridPlanCreateSchema):
             setattr(plan, field, value)
     
     # 更新策略信息
-    for field, value in strategy_data.items():
-        if hasattr(plan.strategy, field):
-            setattr(plan.strategy, field, value)
+    if plan.strategy:
+        for field, value in strategy_data.items():
+            if hasattr(plan.strategy, field):
+                setattr(plan.strategy, field, value)
+        plan.strategy.save()
     
     plan.save()
-    plan.strategy.save()
     
     return plan
 
@@ -173,7 +192,7 @@ def update_plan(request, plan_id: int, payload: GridPlanCreateSchema):
 @grid_router.delete("/plans/{plan_id}", response=MessageResponse)
 def delete_plan(request, plan_id: int):
     """删除网格计划"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     plan.delete()
     return {"message": "网格计划已删除"}
 
@@ -181,15 +200,17 @@ def delete_plan(request, plan_id: int):
 @grid_router.post("/plans/{plan_id}/pressure-test", response=PressureTestResponse)
 def pressure_test(request, plan_id: int):
     """执行压力测试"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     test_result = GridStrategyService.execute_pressure_test(plan)
     return test_result
 
 
 @grid_router.get("/plans/{plan_id}/performance", response=PerformanceResponse)
-def get_plan_performance(request, plan_id: int, current_price: Decimal = Query(...)):
+def get_plan_performance(request, plan_id: int, current_price: Optional[Decimal] = None):
     """获取计划性能"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
+    if current_price is None:
+        current_price = Decimal(str(plan.base_price))
     performance = GridStrategyService.calculate_plan_performance(plan, current_price)
     return performance
 
@@ -197,7 +218,7 @@ def get_plan_performance(request, plan_id: int, current_price: Decimal = Query(.
 @grid_router.post("/plans/{plan_id}/trigger-levels", response=TriggerLevelsResponse)
 def trigger_levels(request, plan_id: int, payload: TriggerLevelsRequest):
     """手动触发网格等级"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     triggered_orders = GridStrategyService.trigger_grid_level(plan, payload.current_price)
     
     return {
@@ -207,9 +228,11 @@ def trigger_levels(request, plan_id: int, payload: TriggerLevelsRequest):
 
 
 @grid_router.get("/plans/{plan_id}/suggestions", response=SuggestionsResponse)
-def get_suggestions(request, plan_id: int, current_price: Decimal = Query(...)):
+def get_suggestions(request, plan_id: int, current_price: Optional[Decimal] = None):
     """获取交易建议"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
+    if current_price is None:
+        current_price = Decimal(str(plan.base_price))
     suggestions = GridStrategyService.get_trading_suggestions(plan, current_price)
     return suggestions
 
@@ -217,7 +240,7 @@ def get_suggestions(request, plan_id: int, current_price: Decimal = Query(...)):
 @grid_router.get("/plans/{plan_id}/optimization", response=OptimizationResponse)
 def get_optimization(request, plan_id: int):
     """获取优化建议"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     suggestions = GridAnalyticsService.generate_optimization_suggestions(plan)
     return {"suggestions": suggestions}
 
@@ -225,7 +248,7 @@ def get_optimization(request, plan_id: int):
 @grid_router.post("/plans/{plan_id}/pause", response=MessageResponse)
 def pause_plan(request, plan_id: int):
     """暂停网格计划"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     plan.status = 'paused'
     plan.save()
     return {"message": "网格计划已暂停"}
@@ -234,7 +257,7 @@ def pause_plan(request, plan_id: int):
 @grid_router.post("/plans/{plan_id}/resume", response=MessageResponse)
 def resume_plan(request, plan_id: int):
     """恢复网格计划"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     plan.status = 'active'
     plan.save()
     return {"message": "网格计划已恢复运行"}
@@ -243,7 +266,7 @@ def resume_plan(request, plan_id: int):
 @grid_router.post("/plans/{plan_id}/stop", response=MessageResponse)
 def stop_plan(request, plan_id: int):
     """停止网格计划"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
     plan.status = 'stopped'
     plan.stopped_at = timezone.now()
     plan.save()
@@ -260,7 +283,7 @@ def stop_plan(request, plan_id: int):
 # ==================== 网格等级相关API ====================
 
 @grid_router.get("/levels", response=List[GridLevelSchema])
-def list_levels(request, plan_id: int = Query(None)):
+def list_levels(request, plan_id: Optional[int] = None):
     """获取网格等级列表"""
     queryset = GridLevel.objects.filter(
         grid_plan__user=request.user
@@ -277,7 +300,7 @@ def get_level(request, level_id: int):
     """获取网格等级详情"""
     return get_object_or_404(
         GridLevel, 
-        id=level_id, 
+        pk=level_id, 
         grid_plan__user=request.user
     )
 
@@ -286,9 +309,9 @@ def get_level(request, level_id: int):
 
 @grid_router.get("/orders", response=List[GridOrderSchema])
 def list_orders(request, 
-                plan_id: int = Query(None),
-                order_type: str = Query(None),
-                status: str = Query(None)):
+                plan_id: Optional[int] = None,
+                order_type: Optional[str] = None,
+                status: Optional[str] = None):
     """获取订单列表"""
     queryset = GridOrder.objects.filter(
         grid_plan__user=request.user
@@ -309,7 +332,7 @@ def get_order(request, order_id: int):
     """获取订单详情"""
     return get_object_or_404(
         GridOrder, 
-        id=order_id, 
+        pk=order_id, 
         grid_plan__user=request.user
     )
 
@@ -319,7 +342,7 @@ def fill_order(request, order_id: int, payload: OrderFillRequest):
     """手动标记订单成交"""
     order = get_object_or_404(
         GridOrder, 
-        id=order_id, 
+        pk=order_id, 
         grid_plan__user=request.user
     )
     
@@ -344,7 +367,7 @@ def cancel_order(request, order_id: int):
     """取消订单"""
     order = get_object_or_404(
         GridOrder, 
-        id=order_id, 
+        pk=order_id, 
         grid_plan__user=request.user
     )
     
@@ -361,8 +384,8 @@ def cancel_order(request, order_id: int):
 
 @grid_router.get("/trade-pairs", response=List[GridTradePairSchema])
 def list_trade_pairs(request, 
-                     plan_id: int = Query(None),
-                     completed: bool = Query(None)):
+                     plan_id: Optional[int] = None,
+                     completed: Optional[bool] = None):
     """获取交易对列表"""
     queryset = GridTradePair.objects.filter(
         grid_plan__user=request.user
@@ -381,7 +404,7 @@ def get_trade_pair(request, pair_id: int):
     """获取交易对详情"""
     return get_object_or_404(
         GridTradePair, 
-        id=pair_id, 
+        pk=pair_id, 
         grid_plan__user=request.user
     )
 
@@ -390,9 +413,9 @@ def get_trade_pair(request, pair_id: int):
 
 @grid_router.get("/snapshots", response=List[GridPerformanceSnapshotSchema])
 def list_snapshots(request,
-                   plan_id: int = Query(None),
-                   start_date: date = Query(None),
-                   end_date: date = Query(None)):
+                   plan_id: Optional[int] = None,
+                   start_date: Optional[date] = None,
+                   end_date: Optional[date] = None):
     """获取性能快照列表"""
     queryset = GridPerformanceSnapshot.objects.filter(
         grid_plan__user=request.user
@@ -408,29 +431,33 @@ def list_snapshots(request,
     return queryset.order_by('-snapshot_date')
 
 
-@grid_router.get("/snapshots/{snapshot_id}", response=GridPerformanceSnapshotSchema)
+@grid_router.get("/snapshots/{snapshot_id}", response=Dict[str, Any])
 def get_snapshot(request, snapshot_id: int):
     """获取性能快照详情"""
     snapshot = get_object_or_404(
         GridPerformanceSnapshot, 
-        id=snapshot_id, 
+        pk=snapshot_id, 
         grid_plan__user=request.user
     )
     
-    # 添加计划信息
-    snapshot.grid_plan_info = {
-        'id': snapshot.grid_plan.id,
-        'plan_name': snapshot.grid_plan.plan_name,
-        'stock_symbol': snapshot.grid_plan.stock.symbol
-    }
+    # 构造响应数据
+    snapshot_data = GridPerformanceSnapshotSchema.from_orm(snapshot).dict()
     
-    return snapshot
+    # 添加计划信息
+    if snapshot.grid_plan:
+        snapshot_data['grid_plan_info'] = {
+            'id': snapshot.grid_plan.pk,
+            'plan_name': snapshot.grid_plan.plan_name,
+            'stock_symbol': snapshot.grid_plan.stock.symbol if snapshot.grid_plan.stock else None
+        }
+    
+    return snapshot_data
 
 
 # ==================== 仪表板API ====================
 
 @grid_router.get("/dashboard", response=Dict[str, Any])
-def get_dashboard(request, enhanced: bool = Query(False)):
+def get_dashboard(request, enhanced: bool = False):
     """获取仪表板数据"""
     user = request.user
     
@@ -447,7 +474,7 @@ def get_dashboard(request, enhanced: bool = Query(False)):
     recent_pairs = GridTradePair.objects.filter(
         grid_plan__user=user,
         is_completed=True
-    ).order_by('-completed_at')[:10]
+    ).select_related('grid_plan', 'grid_plan__stock').order_by('-completed_at')[:10]
     
     # 待处理的订单
     pending_orders = GridOrder.objects.filter(
@@ -472,27 +499,27 @@ def get_dashboard(request, enhanced: bool = Query(False)):
         },
         'recent_trades': [
             {
-                'id': trade.id,
-                'plan_name': trade.grid_plan.plan_name,
-                'stock': trade.grid_plan.stock.symbol,
+                'id': trade.pk,
+                'plan_name': trade.grid_plan.plan_name if trade.grid_plan else '',
+                'stock': trade.grid_plan.stock.symbol if trade.grid_plan and trade.grid_plan.stock else '',
                 'profit': float(trade.profit_amount),
                 'completed_at': trade.completed_at
             } for trade in recent_pairs
         ],
         'best_plans': [
             {
-                'id': plan.id,
+                'id': plan.pk,
                 'name': plan.plan_name,
-                'stock': plan.stock.symbol,
+                'stock': plan.stock.symbol if plan.stock else '',
                 'profit': float(plan.total_profit),
                 'roi': float(plan.total_profit / plan.total_invested * 100) if plan.total_invested > 0 else 0
             } for plan in best_plans
         ],
         'active_plans': [
             {
-                'id': plan.id,
+                'id': plan.pk,
                 'name': plan.plan_name,
-                'stock': plan.stock.symbol,
+                'stock': plan.stock.symbol if plan.stock else '',
                 'status': plan.status,
                 'profit': float(plan.total_profit),
                 'invested': float(plan.total_invested)
@@ -505,11 +532,12 @@ def get_dashboard(request, enhanced: bool = Query(False)):
         # 策略分布
         strategy_distribution = {}
         for plan in plans:
-            version = plan.strategy.version
-            if version not in strategy_distribution:
-                strategy_distribution[version] = {'count': 0, 'profit': 0}
-            strategy_distribution[version]['count'] += 1
-            strategy_distribution[version]['profit'] += float(plan.total_profit)
+            if plan.strategy:
+                version = plan.strategy.version
+                if version not in strategy_distribution:
+                    strategy_distribution[version] = {'count': 0, 'profit': 0}
+                strategy_distribution[version]['count'] += 1
+                strategy_distribution[version]['profit'] += float(plan.total_profit)
         
         # 风险分析
         risk_analysis = {
@@ -651,7 +679,7 @@ def validate_grid_config(request, payload: GridConfigPreviewRequest):
 # ==================== 网格模板管理API ====================
 
 @grid_router.get("/templates", response=List[GridTemplateSchema])
-def list_templates(request, category: str = Query(None), is_public: bool = Query(None)):
+def list_templates(request, category: Optional[str] = None, is_public: Optional[bool] = None):
     """获取模板列表"""
     templates = GridTemplate.objects.all()
     
@@ -681,7 +709,7 @@ def create_template(request, payload: GridTemplateCreateSchema):
 @grid_router.get("/templates/{template_id}", response=GridTemplateSchema)
 def get_template(request, template_id: int):
     """获取模板详情"""
-    template = get_object_or_404(GridTemplate, id=template_id)
+    template = get_object_or_404(GridTemplate, pk=template_id)
     
     # 检查权限
     if not template.is_public and template.user != request.user:
@@ -694,7 +722,7 @@ def get_template(request, template_id: int):
 @grid_router.put("/templates/{template_id}", response=GridTemplateSchema)
 def update_template(request, template_id: int, payload: GridTemplateCreateSchema):
     """更新模板"""
-    template = get_object_or_404(GridTemplate, id=template_id, user=request.user)
+    template = get_object_or_404(GridTemplate, pk=template_id, user=request.user)
     
     for field, value in payload.dict().items():
         setattr(template, field, value)
@@ -706,7 +734,7 @@ def update_template(request, template_id: int, payload: GridTemplateCreateSchema
 @grid_router.delete("/templates/{template_id}", response=MessageResponse)
 def delete_template(request, template_id: int):
     """删除模板"""
-    template = get_object_or_404(GridTemplate, id=template_id, user=request.user)
+    template = get_object_or_404(GridTemplate, pk=template_id, user=request.user)
     template.delete()
     return {"message": "模板已删除"}
 
@@ -716,7 +744,7 @@ def export_template(request, template_id: int):
     """导出模板配置"""
     from django.http import JsonResponse
     
-    template = get_object_or_404(GridTemplate, id=template_id)
+    template = get_object_or_404(GridTemplate, pk=template_id)
     
     # 检查权限
     if not template.is_public and template.user != request.user:
@@ -751,11 +779,11 @@ def import_template(request, payload: GridTemplateImportRequest):
             category='custom'
         )
         
-        result = {"success": True, "template_id": template.id, "message": "模板导入成功"}
+        result = {"success": True, "template_id": template.pk, "message": "模板导入成功"}
         
         # 如果指定了应用到计划，则应用配置
         if payload.apply_to_plan_id:
-            plan = get_object_or_404(GridPlan, id=payload.apply_to_plan_id, user=request.user)
+            plan = get_object_or_404(GridPlan, pk=payload.apply_to_plan_id, user=request.user)
             GridTemplateService.apply_template_to_plan(plan, template)
             result["applied_to_plan"] = True
         
@@ -768,8 +796,8 @@ def import_template(request, payload: GridTemplateImportRequest):
 @grid_router.post("/plans/{plan_id}/apply-template", response=MessageResponse)
 def apply_template_to_plan(request, plan_id: int, payload: ApplyTemplateRequest):
     """应用模板到计划"""
-    plan = get_object_or_404(GridPlan, id=plan_id, user=request.user)
-    template = get_object_or_404(GridTemplate, id=payload.template_id)
+    plan = get_object_or_404(GridPlan, pk=plan_id, user=request.user)
+    template = get_object_or_404(GridTemplate, pk=payload.template_id)
     
     # 检查模板权限
     if not template.is_public and template.user != request.user:
@@ -816,7 +844,7 @@ def create_simulation(request, payload: GridSimulationRequest):
 
 
 @grid_router.get("/simulations", response=List[GridSimulationListResponse])
-def list_simulations(request, status: str = Query(None)):
+def list_simulations(request, status: Optional[str] = None):
     """获取用户的模拟列表"""
     from .models import GridSimulation
     
@@ -886,15 +914,15 @@ def batch_create_plans_from_template(request, payload: Dict[str, Any]):
         from .services import GridTemplateService, GridStrategyService
         from stocks.models import Stock
         
-        template = get_object_or_404(GridTemplate, id=template_id)
-        stocks = Stock.objects.filter(id__in=stock_ids)
+        template = get_object_or_404(GridTemplate, pk=template_id)
+        stocks = Stock.objects.filter(pk__in=stock_ids)
         
         created_plans = []
         
         for stock in stocks:
             # 合并模板配置和基础配置
             config_data = {**template.template_data, **base_config}
-            config_data['stock'] = stock.id
+            config_data['stock'] = stock.pk
             config_data['plan_name'] = f"{stock.name}_网格计划"
             
             # 创建计划
